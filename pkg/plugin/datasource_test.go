@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"testing"
-
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 

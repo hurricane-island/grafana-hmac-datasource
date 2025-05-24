@@ -4,12 +4,13 @@
   "name": "Hmac",
   "id": "hurricaneisland-hmac-datasource",
   "metrics": true,
+  "alerting": false,
   "backend": true,
   "executable": "gpx_hmac",
   "info": {
     "description": "",
     "author": {
-      "name": "Hurricaneisland"
+      "name": "Hurricane Island Center for Science and Leadership"
     },
     "keywords": ["datasource"],
     "logos": {

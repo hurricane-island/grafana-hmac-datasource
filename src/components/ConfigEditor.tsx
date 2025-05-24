@@ -24,7 +24,7 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({
       ...options,
       secureJsonData: {
-        apiKey: event.target.value,
+        secretKey: event.target.value,
       },
     });
   };
@@ -38,7 +38,31 @@ export function ConfigEditor(props: Props) {
       },
       secureJsonData: {
         ...options.secureJsonData,
-        apiKey: '',
+        secretKey: '',
+      },
+    });
+  };
+
+  // Secure field (only sent to the backend)
+  const onClientIdChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      secureJsonData: {
+        secretKey: event.target.value,
+      },
+    });
+  };
+
+  const onResetClientId = () => {
+    onOptionsChange({
+      ...options,
+      secureJsonFields: {
+        ...options.secureJsonFields,
+        clientId: false,
+      },
+      secureJsonData: {
+        ...options.secureJsonData,
+        clientId: '',
       },
     });
   };
@@ -54,12 +78,24 @@ export function ConfigEditor(props: Props) {
           width={40}
         />
       </InlineField>
-      <InlineField label="API Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+      <InlineField label="Client ID" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+        <SecretInput
+          required
+          id="config-editor-client-id"
+          isConfigured={secureJsonFields.clientId}
+          value={secureJsonData?.clientId}
+          placeholder="Enter your API key"
+          width={40}
+          onReset={onResetClientId}
+          onChange={onClientIdChange}
+        />
+      </InlineField>
+      <InlineField label="Secret Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
         <SecretInput
           required
           id="config-editor-api-key"
-          isConfigured={secureJsonFields.apiKey}
-          value={secureJsonData?.apiKey}
+          isConfigured={secureJsonFields.secretKey}
+          value={secureJsonData?.secretKey}
           placeholder="Enter your API key"
           width={40}
           onReset={onResetAPIKey}

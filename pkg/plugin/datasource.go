@@ -2,8 +2,12 @@ package plugin
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -44,6 +48,26 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	instanceSettings := req.PluginContext.DataSourceInstanceSettings
+	clientId := instanceSettings.DecryptedSecureJSONData["clientId"]
+	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
+	hmacData := []string{
+		"GET", // Only GET is supported
+		"", // content type of GET is empty string
+		isoDate,
+		path,
+		"", // service headers is empty string
+		"", // content checksum is empty string for GET
+		clientId,
+	}
+	hmacString := strings.Join(hmacData, "\n")
+	// encodedSecretKey := base64.StdEncoding.EncodeToString([]byte(secretKey))
+	encodedClientId := base64.StdEncoding.EncodeToString([]byte(clientId))
+	mac := hmac.New(sha256.New, []byte(secretKey))
+	mac.Write([]byte(hmacString))
+	authHeader := "xCloud " + encodedClientId + ":" + base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
@@ -79,7 +103,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 
 	// add fields.
 	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
+		data.NewField("phenomenonTime", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
 		data.NewField("values", nil, []int64{10, 20}),
 	)
 
