@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/hurricane-island/grafana-hmac-datasource/pkg/models"
 )
+
 const ISO_COMPATIBILITY = "2006-01-02T15:04:05.000Z"
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -28,6 +30,64 @@ var (
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
+
+// Array of string data to encode.
+func hmacStringArray(
+	// Signature time
+	date time.Time,
+	// API key identifying multi-tenant client
+	clientId string,
+	// All API path segments as string
+	path string,
+) []string {
+	return []string{
+		"GET", // Only GET is supported
+		"",    // content type of GET is empty string
+		date.Format(ISO_COMPATIBILITY),
+		path,
+		"", // service headers is empty string
+		"", // content checksum is empty string for GET
+		clientId,
+	}
+}
+
+// String with data to encode.
+func hmacString(isoDate time.Time, clientId string, path string) string {
+	hmacData := hmacStringArray(isoDate, clientId, path)
+	return strings.Join(hmacData, "\n")
+}
+
+// HMAC-SHA256 signature of the data required for a GET request
+func signedHmacBytes(data string, signingKey string) []byte {
+	words, _ := base64.StdEncoding.DecodeString(signingKey)
+	mac := hmac.New(sha256.New, words)
+	mac.Write([]byte(data))
+	return mac.Sum(nil)
+}
+
+// Compose valid authorization header with HMAC key.
+func authHeader(authMethod string, clientId string, hmac []byte) string {
+	encodedClientId := base64.StdEncoding.EncodeToString([]byte(clientId))
+	hmacBase64 := base64.StdEncoding.EncodeToString(hmac)
+	auth := authMethod + " " + encodedClientId + ":" + hmacBase64
+	return auth
+}
+
+func signedGetRequest(server string, path string, clientId string, secretKey string, authMethod string, delim string) (*http.Request, error) {
+	date := time.Now().UTC()
+	data := hmacStringArray(date, clientId, path)
+	hmac := signedHmacBytes(strings.Join(data, delim), secretKey)
+	auth := authHeader(authMethod, clientId, hmac)
+	url := server + path
+	req, err :=  http.NewRequest("GET", url, nil)
+	if err != nil {
+		return req, err
+	}
+	isoDate := date.Format(ISO_COMPATIBILITY)
+	req.Header.Add("Authorization", auth)
+	req.Header.Add("Date", isoDate)
+	return req, err
+}
 
 // NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
@@ -45,43 +105,6 @@ func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
 }
 
-func hmacBuffer(isoDate time.Time, clientId  string, path string) [] string{
-	return []string{
-		"GET", // Only GET is supported
-		"", // content type of GET is empty string
-		isoDate.Format(ISO_COMPATIBILITY),
-		path,
-		"", // service headers is empty string
-		"", // content checksum is empty string for GET
-		clientId,
-	}
-}
-
-func hmacBufferString(isoDate time.Time, clientId  string, path string) string {
-	hmacData := hmacBuffer(isoDate, clientId, path)
-	return strings.Join(hmacData, "\n")
-}
-
-func SignedHmacBytes(isoDate time.Time, clientId  string, secretKey string, path string) []byte {
-	hmacString := hmacBufferString(isoDate, clientId, path)
-	secretKeyWords, _ := base64.StdEncoding.DecodeString(secretKey)
-	mac := hmac.New(sha256.New, secretKeyWords)
-	mac.Write([]byte(hmacString))
-	return mac.Sum(nil)
-}
-
-func SignedHmacBase64String(isoDate time.Time, clientId  string, secretKey string, path string) string {
-	hmacBytes := SignedHmacBytes(isoDate, clientId, secretKey, path)
-	return base64.StdEncoding.EncodeToString(hmacBytes)
-}
-
-func authHeader(isoDate time.Time, authMethod string, clientId string, secretKey string, path string) string {
-	encodedClientId := base64.StdEncoding.EncodeToString([]byte(clientId))
-	hmac := SignedHmacBase64String(isoDate, clientId, secretKey, path)
-	authHeader := authMethod + " " + encodedClientId + ":" + hmac
-	return authHeader
-}
-
 // QueryData handles multiple queries and returns multiple responses.
 // req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
@@ -92,7 +115,11 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
 	date := time.Now().UTC()
 	// path := instanceSettings.JSONData["path"].(string)
-	auth := authHeader(date, "xCloud", clientId, secretKey, "/observations")
+	path := "/xcloud/data-export/observations"
+	hmacData := hmacStringArray(date, clientId, path)
+	hmacString:= strings.Join(hmacData, "\n")
+	hmac := signedHmacBytes(hmacString, secretKey)
+	auth := authHeader("xCloud", clientId, hmac)
 	req.SetHTTPHeader("Authorization", auth)
 	req.SetHTTPHeader("Date", date.Format(ISO_COMPATIBILITY))
 
