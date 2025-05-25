@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 	"strings"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"encoding/json"
 )
 
 const REFERENCE_DATE = "2025-05-25T13:24:56.789Z"
@@ -64,6 +65,32 @@ func TestHmacBytes(t *testing.T) {
 	}
 }
 
+type Thing struct {
+    Id string `json:"id"`
+    Name string `json:"name"`
+    Description string `json:"description"`
+    Location []struct {
+        Latitude float32 `json:"latitude"`
+        Longitude float32 `json:"longitude"`
+    } `json:"location"`
+}
+
+type DataStream struct {
+	Id string `json:"id"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	UnitOfMeasurement struct {
+		Name string `json:"name"`
+		Symbol string `json:"symbol"`
+	}
+}
+
+type Observation struct {
+	Value float32 `json:"value"`
+	PhenomenonTime int `json:"phenomenonTime"`
+}
+
+
 func TestQueryThings(t *testing.T) {
 	client := http.Client{}
 	clientId := os.Getenv("CLIENT_ID")
@@ -84,16 +111,22 @@ func TestQueryThings(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("Request failed with:", string(body))
 	}
-	// if true {
-	// 	t.Fatal("Request succeeded with: ", string(body))
-	// }
+	var things []Thing
+	err = json.Unmarshal(body, &things)
+	if err != nil {
+		t.Fatal("Error unmarshaling response:", err)
+	}
+	if true {
+		t.Fatal("Request succeeded with: ", things)
+	}
 }
 
 func TestQueryDataStreams(t *testing.T) {
 	client := http.Client{}
 	clientId := os.Getenv("CLIENT_ID")
 	secretKey := os.Getenv("SECRET_KEY")
-	req, err := signedGetRequest(SERVER_URL, "/site/6809170ead845d428de9a636/datastreams", clientId, secretKey, AUTH_METHOD, DELIMITER)
+	datastreamsUrl := "/xcloud/data-export/site/6809170ead845d428de9a636/datastreams"
+	req, err := signedGetRequest(SERVER_URL, datastreamsUrl, clientId, secretKey, AUTH_METHOD, DELIMITER)
 	if err != nil {
 		t.Fatal("Request failed with: ", err)
 	}
@@ -109,9 +142,54 @@ func TestQueryDataStreams(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("Request failed with:", string(body))
 	}
-	// if true {
-	// 	t.Fatal("Request succeeded with: ", string(body))
-	// }
+	var datastreams []DataStream
+	err = json.Unmarshal(body, &datastreams)
+	if err != nil {
+		t.Fatal("Error unmarshaling response:", err)
+	}
+	if true {
+		t.Fatal("Request succeeded with:", len(datastreams))
+	}
+}
+
+func TestQueryObservations(t *testing.T) {
+	client := http.Client{}
+	clientId := os.Getenv("CLIENT_ID")
+	secretKey := os.Getenv("SECRET_KEY")
+	url := "/xcloud/data-export/observations?datastreamIds=2015785,2015786&from=2025-05-20T00:00:00.000Z&until=2025-05-25T00:00:00.000Z"
+	req, err := signedGetRequest(SERVER_URL, url, clientId, secretKey, AUTH_METHOD, DELIMITER)
+	if err != nil {
+		t.Fatal("Request failed with:", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal("Request failed with:", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Error reading body:", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatal("Request failed with:", string(body))
+	}
+	var idMap map[string]json.RawMessage
+	err = json.Unmarshal(body, &idMap)
+	if err != nil {
+		t.Fatal("Error unmarshaling response:", err)
+	}
+	var observations = make(map[string][]Observation)
+	for k, v := range idMap {
+		var obs []Observation
+		err = json.Unmarshal(v, &obs)
+		if err != nil {
+			t.Fatal("Error unmarshaling observation:", err)
+		}
+		observations[k] = obs
+	}
+	if true {
+		t.Fatal("Request succeeded with:", len(observations))
+	}
 }
 
 func TestQueryData(t *testing.T) {

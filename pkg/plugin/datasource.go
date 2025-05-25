@@ -114,7 +114,6 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	clientId := instanceSettings.DecryptedSecureJSONData["clientId"]
 	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
 	date := time.Now().UTC()
-	// path := instanceSettings.JSONData["path"].(string)
 	path := "/xcloud/data-export/observations"
 	hmacData := hmacStringArray(date, clientId, path)
 	hmacString:= strings.Join(hmacData, "\n")
@@ -122,7 +121,6 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	auth := authHeader("xCloud", clientId, hmac)
 	req.SetHTTPHeader("Authorization", auth)
 	req.SetHTTPHeader("Date", date.Format(ISO_COMPATIBILITY))
-
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
@@ -138,33 +136,25 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-type queryModel struct{}
+type queryModel struct{
+
+}
 
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
-
-	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
-
 	err := json.Unmarshal(query.JSON, &qm)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
 	// https://grafana.com/developers/plugin-tools/introduction/data-frames
 	frame := data.NewFrame("response")
-
-	// add fields.
 	frame.Fields = append(frame.Fields,
 		data.NewField("phenomenonTime", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
+		data.NewField("value", nil, []int64{10, 20}),
 	)
-
-	// add the frames to the response.
 	response.Frames = append(response.Frames, frame)
-
 	return response
 }
 

@@ -15,7 +15,7 @@ test('should trigger new query when Constant field is changed', async ({
   await panelEditPage.getQueryEditorRow('A').getByRole('textbox', { name: 'Query Text' }).fill('test query');
   const queryReq = panelEditPage.waitForQueryDataRequest();
   await panelEditPage.getQueryEditorRow('A').getByRole('spinbutton').fill('10');
-  await expect(await queryReq).toBeTruthy();
+  expect(await queryReq).toBeTruthy();
 });
 
 test('data query should return values 10 and 20', async ({ panelEditPage, readProvisionedDataSource }) => {
