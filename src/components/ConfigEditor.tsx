@@ -14,7 +14,7 @@ export function ConfigEditor(props: Props) {
       ...options,
       jsonData: {
         ...jsonData,
-        path: event.target.value,
+        basePath: event.target.value,
       },
     });
   };
@@ -25,6 +25,16 @@ export function ConfigEditor(props: Props) {
       jsonData: {
         ...jsonData,
         serverUrl: event.target.value,
+      },
+    });
+  };
+
+    const onAuthMethodChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        authMethod: event.target.value,
       },
     });
   };
@@ -44,7 +54,7 @@ export function ConfigEditor(props: Props) {
       ...options,
       secureJsonFields: {
         ...options.secureJsonFields,
-        apiKey: false,
+        secretKey: false,
       },
       secureJsonData: {
         ...options.secureJsonData,
@@ -58,7 +68,7 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({
       ...options,
       secureJsonData: {
-        secretKey: event.target.value,
+        clientId: event.target.value,
       },
     });
   };
@@ -79,7 +89,7 @@ export function ConfigEditor(props: Props) {
 
   return (
     <>
-      <InlineField label="Server URL" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+      <InlineField label="Server URL" labelWidth={14} interactive tooltip={'URL of server to use'}>
         <Input
           id="config-editor-server-url"
           onChange={onServerUrlChange}
@@ -88,12 +98,21 @@ export function ConfigEditor(props: Props) {
           width={40}
         />
       </InlineField>
-      <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+      <InlineField label="Base Path" labelWidth={14} interactive tooltip={'base API route'}>
         <Input
-          id="config-editor-path"
+          id="config-editor-base-path"
           onChange={onPathChange}
-          value={jsonData.path}
-          placeholder="Enter the path, e.g. /observations"
+          value={jsonData.basePath}
+          placeholder="Enter the base API path"
+          width={40}
+        />
+      </InlineField>
+      <InlineField label="Auth Method" labelWidth={14} interactive tooltip={'Name of receiving service'}>
+        <Input
+          id="config-editor-auth-method"
+          onChange={onAuthMethodChange}
+          value={jsonData.authMethod}
+          placeholder="..."
           width={40}
         />
       </InlineField>

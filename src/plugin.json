@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
-  "name": "HMAC",
+  "name": "HMAC Sensor Things",
   "id": "hurricaneisland-hmac-datasource",
   "metrics": true,
   "alerting": false,
@@ -12,7 +12,7 @@
     "author": {
       "name": "Hurricane Island Center for Science and Leadership"
     },
-    "keywords": ["datasource", "sensor things", "hmac"],
+    "keywords": ["datasource", "Sensor Things API", "HMAC", "rest"],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"

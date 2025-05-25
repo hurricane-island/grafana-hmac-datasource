@@ -7,9 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
-	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -19,6 +20,8 @@ import (
 )
 
 const ISO_COMPATIBILITY = "2006-01-02T15:04:05.000Z"
+const INDEX_NAME = "/sites"
+const QUERY_PATH = "/observations"
 
 // Make sure Datasource implements required interfaces. This is important to do
 // since otherwise we will only get a not implemented error response from plugin in
@@ -79,7 +82,7 @@ func signedGetRequest(server string, path string, clientId string, secretKey str
 	hmac := signedHmacBytes(strings.Join(data, delim), secretKey)
 	auth := authHeader(authMethod, clientId, hmac)
 	url := server + path
-	req, err :=  http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return req, err
 	}
@@ -110,17 +113,7 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	instanceSettings := req.PluginContext.DataSourceInstanceSettings
-	clientId := instanceSettings.DecryptedSecureJSONData["clientId"]
-	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
-	date := time.Now().UTC()
-	path := "/xcloud/data-export/observations"
-	hmacData := hmacStringArray(date, clientId, path)
-	hmacString:= strings.Join(hmacData, "\n")
-	hmac := signedHmacBytes(hmacString, secretKey)
-	auth := authHeader("xCloud", clientId, hmac)
-	req.SetHTTPHeader("Authorization", auth)
-	req.SetHTTPHeader("Date", date.Format(ISO_COMPATIBILITY))
+
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
@@ -136,25 +129,67 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-type queryModel struct{
-
+type QueryModel struct {
+	DataStreamIds string `json:"dataStreamIds"`
 }
 
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
-	var qm queryModel
-	err := json.Unmarshal(query.JSON, &qm)
+	var qm QueryModel
+	instanceSettings := pCtx.DataSourceInstanceSettings
+	clientId := instanceSettings.DecryptedSecureJSONData["clientId"]
+	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
+	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("load plugin settings: %v", err.Error()))
+	}
+	err = json.Unmarshal(query.JSON, &qm)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
-	frame := data.NewFrame("response")
-	frame.Fields = append(frame.Fields,
-		data.NewField("phenomenonTime", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("value", nil, []int64{10, 20}),
-	)
-	response.Frames = append(response.Frames, frame)
+	path := config.BasePath + QUERY_PATH
+	client := http.Client{}
+	getReq, err := signedGetRequest(config.ServerUrl, path, clientId, secretKey, config.AuthMethod, "\n")
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("signed request: %v", err.Error()))
+	}
+	resp, err := client.Do(getReq)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request failed: %v", err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("reading body: %v", err.Error()))
+	}
+	if resp.StatusCode != 200 {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request failed: %v", string(body)))
+	}
+	var partial map[string]json.RawMessage
+	err = json.Unmarshal(body, &partial)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("partial unmarshaling failed: %v", err.Error()))
+	}
+	for _, v := range partial {
+		var obs []models.Observation
+		err = json.Unmarshal(v, &obs)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshaling observation failed: %v", err.Error()))
+		}
+		time := make([]int, len(obs))
+		value := make([]float32, len(obs))
+		for i, observation := range obs {
+			time[i] = observation.PhenomenonTime
+			value[i] = observation.Value
+		}
+		// https://grafana.com/developers/plugin-tools/introduction/data-frames
+		frame := data.NewFrame("response")
+		frame.Fields = append(frame.Fields,
+			data.NewField("phenomenonTime", nil, time),
+			data.NewField("value", nil, value),
+		)
+		response.Frames = append(response.Frames, frame)
+	}	
 	return response
 }
 
@@ -166,24 +201,70 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 	res := &backend.CheckHealthResult{}
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
+	res.Status = backend.HealthStatusError
 	if err != nil {
-		res.Status = backend.HealthStatusError
 		res.Message = "Unable to load settings"
 		return res, nil
 	}
 
 	if config.Secrets.SecretKey == "" {
-		res.Status = backend.HealthStatusError
 		res.Message = "HMAC signing key is missing"
 		return res, nil
 	}
 
 	if config.Secrets.ClientId == "" {
-		res.Status = backend.HealthStatusError
 		res.Message = "Client ID is missing"
 		return res, nil
 	}
 
+	if config.ServerUrl == "" {
+		res.Message = "Server URL is missing"
+		return res, nil
+	}
+
+	if config.BasePath == "" {
+		res.Message = "BasePath is missing"
+		return res, nil
+	}
+
+	if config.AuthMethod == "" {
+		res.Message = "Auth method is missing"
+		return res, nil
+	}
+	path := config.BasePath + INDEX_NAME
+	client := http.Client{}
+	getReq, err := signedGetRequest(
+		config.ServerUrl, path, config.Secrets.ClientId,
+		config.Secrets.SecretKey, config.AuthMethod, "\n")
+	if err != nil {
+		res.Message = "Request failed:" + err.Error()
+		return res, nil
+	}
+	resp, err := client.Do(getReq)
+	if err != nil {
+		res.Message = "Request failed:" + err.Error()
+		return res, nil
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		res.Message = "Error reading body:" + err.Error()
+		return res, nil
+	}
+	if resp.StatusCode != 200 {
+		res.Message = "Request failed:" + string(body)
+		return res, nil
+	}
+	var things []models.Thing
+	err = json.Unmarshal(body, &things)
+	if err != nil {
+		res.Message = "Unmarshaling failed:" + err.Error()
+		return res, nil
+	}
+	if len(things) == 0 {
+		res.Message = "No root nodes found"
+		return res, nil
+	}
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
 		Message: "Data source is working",

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"encoding/json"
+
+	"github.com/hurricane-island/grafana-hmac-datasource/pkg/models"
 )
 
 const REFERENCE_DATE = "2025-05-25T13:24:56.789Z"
@@ -65,31 +67,6 @@ func TestHmacBytes(t *testing.T) {
 	}
 }
 
-type Thing struct {
-    Id string `json:"id"`
-    Name string `json:"name"`
-    Description string `json:"description"`
-    Location []struct {
-        Latitude float32 `json:"latitude"`
-        Longitude float32 `json:"longitude"`
-    } `json:"location"`
-}
-
-type DataStream struct {
-	Id string `json:"id"`
-	Name string `json:"name"`
-	Description string `json:"description"`
-	UnitOfMeasurement struct {
-		Name string `json:"name"`
-		Symbol string `json:"symbol"`
-	}
-}
-
-type Observation struct {
-	Value float32 `json:"value"`
-	PhenomenonTime int `json:"phenomenonTime"`
-}
-
 
 func TestQueryThings(t *testing.T) {
 	client := http.Client{}
@@ -111,7 +88,7 @@ func TestQueryThings(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("Request failed with:", string(body))
 	}
-	var things []Thing
+	var things []models.Thing
 	err = json.Unmarshal(body, &things)
 	if err != nil {
 		t.Fatal("Error unmarshaling response:", err)
@@ -142,7 +119,7 @@ func TestQueryDataStreams(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("Request failed with:", string(body))
 	}
-	var datastreams []DataStream
+	var datastreams []models.DataStream
 	err = json.Unmarshal(body, &datastreams)
 	if err != nil {
 		t.Fatal("Error unmarshaling response:", err)
@@ -178,9 +155,9 @@ func TestQueryObservations(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error unmarshaling response:", err)
 	}
-	var observations = make(map[string][]Observation)
+	var observations = make(map[string][]models.Observation)
 	for k, v := range idMap {
-		var obs []Observation
+		var obs []models.Observation
 		err = json.Unmarshal(v, &obs)
 		if err != nil {
 			t.Fatal("Error unmarshaling observation:", err)

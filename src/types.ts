@@ -2,29 +2,20 @@ import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
 export interface ObservationQuery extends DataQuery {
-  queryText?: string;
-  datastreamId: string;
+  datastreamIds: string;
 }
 
 export const DEFAULT_QUERY: Partial<ObservationQuery> = {
-  datastreamId: "",
+  datastreamIds: "",
 };
-
-export interface Observation {
-  phenomenonTime: number;
-  value: number;
-}
-
-export interface DataSourceResponse {
-  observations: Observation[];
-}
 
 /**
  * These are options configured for each DataSource instance
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
-  path?: string;
-  serverUrl?: string;
+  basePath?: string
+  serverUrl?: string
+  authMethod?: string
 }
 
 /**

@@ -1,5 +1,5 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
-import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
+import { DataSourceInstanceSettings, CoreApp } from '@grafana/data';
+import { DataSourceWithBackend } from '@grafana/runtime';
 
 import { ObservationQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
 
@@ -12,15 +12,4 @@ export class DataSource extends DataSourceWithBackend<ObservationQuery, MyDataSo
     return DEFAULT_QUERY;
   }
 
-  applyTemplateVariables(query: ObservationQuery, scopedVars: ScopedVars) {
-    return {
-      ...query,
-      queryText: getTemplateSrv().replace(query.queryText, scopedVars),
-    };
-  }
-
-  filterQuery(query: ObservationQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
-  }
 }
