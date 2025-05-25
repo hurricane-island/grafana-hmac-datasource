@@ -9,6 +9,7 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      path: '/resources'
+      path: '/observations'
     secureJsonData:
-      apiKey: 'api-key'
+      secretKey: 'secret-key'
+      clientId: 'client-id'

@@ -1,4 +1,4 @@
-module github.com/hurricaneisland/hmac
+module github.com/hurricane-island/grafana-hmac-datasource
 
 go 1.24.1
 

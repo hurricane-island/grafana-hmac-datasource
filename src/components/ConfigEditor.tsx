@@ -19,6 +19,16 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  const onServerUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        serverUrl: event.target.value,
+      },
+    });
+  };
+
   // Secure field (only sent to the backend)
   const onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
@@ -69,34 +79,43 @@ export function ConfigEditor(props: Props) {
 
   return (
     <>
+      <InlineField label="Server URL" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+        <Input
+          id="config-editor-server-url"
+          onChange={onServerUrlChange}
+          value={jsonData.serverUrl}
+          placeholder="Enter the server URL"
+          width={40}
+        />
+      </InlineField>
       <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
         <Input
           id="config-editor-path"
           onChange={onPathChange}
           value={jsonData.path}
-          placeholder="Enter the path, e.g. /api/v1"
+          placeholder="Enter the path, e.g. /observations"
           width={40}
         />
       </InlineField>
-      <InlineField label="Client ID" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+      <InlineField label="Client ID" labelWidth={14} interactive tooltip={'Service routing key'}>
         <SecretInput
           required
           id="config-editor-client-id"
           isConfigured={secureJsonFields.clientId}
           value={secureJsonData?.clientId}
-          placeholder="Enter your API key"
+          placeholder="..."
           width={40}
           onReset={onResetClientId}
           onChange={onClientIdChange}
         />
       </InlineField>
-      <InlineField label="Secret Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+      <InlineField label="Secret Key" labelWidth={14} interactive tooltip={'HMAC signing key'}>
         <SecretInput
           required
           id="config-editor-api-key"
           isConfigured={secureJsonFields.secretKey}
           value={secureJsonData?.secretKey}
-          placeholder="Enter your API key"
+          placeholder="..."
           width={40}
           onReset={onResetAPIKey}
           onChange={onAPIKeyChange}

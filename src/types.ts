@@ -1,22 +1,22 @@
 import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
-export interface MyQuery extends DataQuery {
+export interface ObservationQuery extends DataQuery {
   queryText?: string;
-  constant: number;
+  datastreamId: string;
 }
 
-export const DEFAULT_QUERY: Partial<MyQuery> = {
-  constant: 6.5,
+export const DEFAULT_QUERY: Partial<ObservationQuery> = {
+  datastreamId: "",
 };
 
-export interface DataPoint {
-  Time: number;
-  Value: number;
+export interface Observation {
+  phenomenonTime: number;
+  value: number;
 }
 
 export interface DataSourceResponse {
-  datapoints: DataPoint[];
+  observations: Observation[];
 }
 
 /**
@@ -24,6 +24,7 @@ export interface DataSourceResponse {
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
   path?: string;
+  serverUrl?: string;
 }
 
 /**

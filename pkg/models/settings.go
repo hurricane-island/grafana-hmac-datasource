@@ -8,12 +8,14 @@ import (
 )
 
 type PluginSettings struct {
-	Path    string                `json:"path"`
+	ServerUrl string `json:"serverUrl"`
+	Path string `json:"path"`
 	Secrets *SecretPluginSettings `json:"-"`
 }
 
 type SecretPluginSettings struct {
-	ApiKey string `json:"apiKey"`
+	SecretKey string `json:"secretKey"`
+	ClientId string `json:"clientId"`
 }
 
 func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
@@ -22,14 +24,13 @@ func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSetti
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal PluginSettings json: %w", err)
 	}
-
 	settings.Secrets = loadSecretPluginSettings(source.DecryptedSecureJSONData)
-
 	return &settings, nil
 }
 
 func loadSecretPluginSettings(source map[string]string) *SecretPluginSettings {
 	return &SecretPluginSettings{
-		ApiKey: source["apiKey"],
+		SecretKey: source["secretKey"],
+		ClientId: source["clientId"],
 	}
 }
