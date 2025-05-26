@@ -55,12 +55,6 @@ func hmacStringArray(
 	}
 }
 
-// String with data to encode.
-func hmacString(isoDate time.Time, clientId string, path string) string {
-	hmacData := hmacStringArray(isoDate, clientId, path)
-	return strings.Join(hmacData, "\n")
-}
-
 // HMAC-SHA256 signature of the data required for a GET request
 func signedHmacBytes(data string, signingKey string) []byte {
 	words, _ := base64.StdEncoding.DecodeString(signingKey)
@@ -77,6 +71,7 @@ func authHeader(authMethod string, clientId string, hmac []byte) string {
 	return auth
 }
 
+// Produce a GET request with HMAC signature.
 func signedGetRequest(server string, path string, clientId string, secretKey string, authMethod string, delim string) (*http.Request, error) {
 	date := time.Now().UTC()
 	data := hmacStringArray(date, clientId, path)
@@ -93,7 +88,7 @@ func signedGetRequest(server string, path string, clientId string, secretKey str
 	return req, err
 }
 
-// NewDatasource creates a new datasource instance.
+// Construct an empty datasource instance.
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
@@ -148,7 +143,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-	datastreamsUrl := config.BasePath + "/site/" + qm.ThingId + "/datastreams"
+	datastreamsUrl := config.BasePath + "/site" + "/" + qm.ThingId + "/datastreams"
 	req, err := signedGetRequest(config.ServerUrl, datastreamsUrl, clientId, secretKey, config.AuthMethod, "\n")
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
