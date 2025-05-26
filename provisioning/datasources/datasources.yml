@@ -1,7 +1,7 @@
 apiVersion: 1
 
 datasources:
-  - name: 'hmac'
+  - name: 'Sensor Things API with HMAC'
     type: 'hurricaneisland-hmac-datasource'
     access: proxy
     isDefault: false
@@ -9,7 +9,9 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      path: '/observations'
+      basePath: '/api'
+      authMethod: 'HMAC'
+      serverUrl: 'https://example.com'
     secureJsonData:
       secretKey: 'secret-key'
       clientId: 'client-id'

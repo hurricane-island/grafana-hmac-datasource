@@ -7,7 +7,8 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
-type Thing struct {
+// SensorThings API Thing, with nested Location
+type ThingWithLocation struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -17,6 +18,7 @@ type Thing struct {
 	} `json:"location"`
 }
 
+// SensorThings API Datastream
 type DataStream struct {
 	Id                string `json:"id"`
 	Name              string `json:"name"`
@@ -27,9 +29,10 @@ type DataStream struct {
 	}
 }
 
+// SensorThings API Observation
 type Observation struct {
 	Value          float64 `json:"value"`
-	PhenomenonTime int64  `json:"phenomenonTime"`
+	PhenomenonTime int64   `json:"phenomenonTime"`
 }
 
 type PluginSettings struct {

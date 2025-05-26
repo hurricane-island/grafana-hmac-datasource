@@ -8,10 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
-	"math"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -164,7 +164,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	var datastreams []models.DataStream
 	err = json.Unmarshal(body, &datastreams)
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshal: %v",err.Error()))
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshal: %v", err.Error()))
 	}
 	var datastreamIds []string
 	var lookup = make(map[string]string)
@@ -175,7 +175,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	from := query.TimeRange.From.Format(ISO_COMPATIBILITY)
 	until := query.TimeRange.To.Format(ISO_COMPATIBILITY)
 	path := config.BasePath + QUERY_PATH + "?from=" + from + "&until=" + until + "&datastreamIds=" + strings.Join(datastreamIds, ",")
-	
+
 	getReq, err := signedGetRequest(config.ServerUrl, path, clientId, secretKey, config.AuthMethod, "\n")
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("signed request: %v", err.Error()))
@@ -212,7 +212,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 				// Skip NaN values
 				continue
 			}
-			t[i] = time.Unix(0, observation.PhenomenonTime * int64(time.Millisecond))
+			t[i] = time.Unix(0, observation.PhenomenonTime*int64(time.Millisecond))
 			value[i] = observation.Value
 			count += 1
 		}
@@ -294,7 +294,7 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		res.Message = "Request failed:" + string(body)
 		return res, nil
 	}
-	var things []models.Thing
+	var things []models.ThingWithLocation
 	err = json.Unmarshal(body, &things)
 	if err != nil {
 		res.Message = "Unmarshaling failed:" + err.Error()

@@ -2,15 +2,16 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
-	"strings"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"encoding/json"
 
 	"github.com/hurricane-island/grafana-hmac-datasource/pkg/models"
 )
@@ -54,10 +55,10 @@ func TestHmacBytes(t *testing.T) {
 		t.Fatal("Error parsing date:", err)
 	}
 	hmacData := hmacStringArray(date, clientId, REFERENCE_ENDPOINT)
-	hmacString:= strings.Join(hmacData, "\n")
+	hmacString := strings.Join(hmacData, "\n")
 	if FIXED_WIDTH != 0 {
 		runeCount := utf8.RuneCountInString(hmacString)
-		if runeCount != FIXED_WIDTH{
+		if runeCount != FIXED_WIDTH {
 			t.Fatal("HMAC character length =", runeCount)
 		}
 	}
@@ -66,7 +67,6 @@ func TestHmacBytes(t *testing.T) {
 		t.Fatal("HMAC byte length = ", len(hmac))
 	}
 }
-
 
 func TestQueryThings(t *testing.T) {
 	client := http.Client{}
@@ -88,7 +88,7 @@ func TestQueryThings(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("Request failed with:", string(body))
 	}
-	var things []models.Thing
+	var things []models.ThingWithLocation
 	err = json.Unmarshal(body, &things)
 	if err != nil {
 		t.Fatal("Error unmarshaling response:", err)
