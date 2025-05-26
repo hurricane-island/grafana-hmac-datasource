@@ -6,7 +6,8 @@ import { MyDataSourceOptions, ObservationQuery, Thing } from '../types';
 
 type Props = QueryEditorProps<DataSource, ObservationQuery, MyDataSourceOptions>;
 
-
+// Query uses backend data to populate interface with available
+// resource labels and identifiers.
 export function QueryEditor({ query, datasource, onChange }: Props) {
   const onComboboxChange = (option: ComboboxOption) => {
     onChange({ ...query, thingId: option.value });
