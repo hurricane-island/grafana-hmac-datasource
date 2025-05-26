@@ -5,6 +5,17 @@ export interface ObservationQuery extends DataQuery {
   thingId: string;
 }
 
+export type Thing = {
+  id: string
+  name: string
+  description?: string
+  location: Array<{
+    latitude: number
+    longitude: number
+  }>
+}
+
+
 export const DEFAULT_QUERY: Partial<ObservationQuery> = {
   thingId: "",
 };

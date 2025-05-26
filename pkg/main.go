@@ -17,7 +17,8 @@ func main() {
 	// from Grafana to create different instances of SampleDatasource (per datasource
 	// ID). When datasource configuration changed Dispose method will be called and
 	// new datasource instance created using NewSampleDatasource factory.
-	if err := datasource.Manage("hurricaneisland-hmac-datasource", plugin.NewDatasource, datasource.ManageOpts{}); err != nil {
+	options := datasource.ManageOpts{}
+	if err := datasource.Manage("hurricaneisland-hmac-datasource", plugin.NewDatasource, options); err != nil {
 		log.DefaultLogger.Error(err.Error())
 		os.Exit(1)
 	}

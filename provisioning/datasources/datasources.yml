@@ -9,9 +9,9 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      basePath: '/api'
-      authMethod: 'HMAC'
-      serverUrl: 'https://example.com'
+      basePath: '/xcloud/data-export'
+      authMethod: 'xCloud'
+      serverUrl: 'https://cloud.xylem.com'
     secureJsonData:
-      secretKey: 'secret-key'
-      clientId: 'client-id'
+      secretKey: 'qMWivi48nAf6hcoJYQD9D+fJ9sXxmP8k/IaUUoubXs8='
+      clientId: '1eff600b-2834-45c9-8eb9-5800017f4345'

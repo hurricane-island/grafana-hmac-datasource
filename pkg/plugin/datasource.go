@@ -88,14 +88,24 @@ func signedGetRequest(server string, path string, clientId string, secretKey str
 	return req, err
 }
 
-// Construct an empty datasource instance.
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
+// Construct an empty datasource instance. Called as Factory method in main.go
+// Can pass in the instance settings, which are used to configure the datasource,
+// so that secrets can be access from resource calls.
+func NewDatasource(_ context.Context, instanceSettings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	config, err := models.LoadPluginSettings(instanceSettings)
+	if err != nil {
+		return nil, err
+	}
+	return &Datasource{
+		Config: config,
+	}, nil
 }
 
 // Datasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
-type Datasource struct{}
+type Datasource struct{
+	Config *models.PluginSettings
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
@@ -125,26 +135,89 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
+// Implement a generic resource handler for the datasource.
+// This will need a switch statement to handle different paths.
+func (d *Datasource) CallResource(
+	// Unused
+	_ context.Context,
+	// Contains API path to query, e.g. /sites
+	req *backend.CallResourceRequest, 
+	sender backend.CallResourceResponseSender,
+) error {
+	path := d.Config.BasePath + "/" + req.Path
+	client := http.Client{}
+	getReq, err := signedGetRequest(
+		d.Config.ServerUrl, path, d.Config.Secrets.ClientId,
+		d.Config.Secrets.SecretKey, d.Config.AuthMethod, "\n")
+	if err != nil {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusBadRequest,
+			Body: []byte(err.Error()),
+		})
+	}
+	resp, err := client.Do(getReq)
+	if err != nil {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body: []byte(err.Error()),
+		})
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body: []byte(err.Error()),
+		})
+	}
+	if resp.StatusCode != 200 {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: resp.StatusCode,
+			Body: []byte(body),
+		})
+	}
+	var things []models.ThingWithLocation
+	err = json.Unmarshal(body, &things)
+	if err != nil {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body: []byte(err.Error()),
+		})
+	}
+	result, err := json.Marshal(things)
+	if err != nil {
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body: []byte(err.Error()),
+		})
+	}
+	return sender.Send(&backend.CallResourceResponse{
+		Status: http.StatusOK,
+		Body:   result,
+		Headers: map[string][]string{	
+			"Content-Type": {"application/json"},
+		},
+	})
+}
+
 type QueryModel struct {
 	ThingId string `json:"thingId"`
+}
+
+// Convenience function to make request with configured secrets and params.
+func (d *Datasource) request(path string) (*http.Request, error) {
+	return signedGetRequest(d.Config.ServerUrl, path, d.Config.Secrets.ClientId, d.Config.Secrets.SecretKey, d.Config.AuthMethod, "\n")
 }
 
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
 	var qm QueryModel
-	instanceSettings := pCtx.DataSourceInstanceSettings
-	clientId := instanceSettings.DecryptedSecureJSONData["clientId"]
-	secretKey := instanceSettings.DecryptedSecureJSONData["secretKey"]
-	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("load plugin settings: %v", err.Error()))
-	}
-	err = json.Unmarshal(query.JSON, &qm)
+	err := json.Unmarshal(query.JSON, &qm)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-	datastreamsUrl := config.BasePath + "/site" + "/" + qm.ThingId + "/datastreams"
-	req, err := signedGetRequest(config.ServerUrl, datastreamsUrl, clientId, secretKey, config.AuthMethod, "\n")
+	datastreamsUrl := d.Config.BasePath + "/site" + "/" + qm.ThingId + "/datastreams"
+	req, err := d.request(datastreamsUrl)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
 	}
@@ -174,9 +247,9 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	}
 	from := query.TimeRange.From.Format(ISO_COMPATIBILITY)
 	until := query.TimeRange.To.Format(ISO_COMPATIBILITY)
-	path := config.BasePath + QUERY_PATH + "?from=" + from + "&until=" + until + "&datastreamIds=" + strings.Join(datastreamIds, ",")
+	path := d.Config.BasePath + QUERY_PATH + "?from=" + from + "&until=" + until + "&datastreamIds=" + strings.Join(datastreamIds, ",")
 
-	getReq, err := signedGetRequest(config.ServerUrl, path, clientId, secretKey, config.AuthMethod, "\n")
+	getReq, err := d.request(path)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("signed request: %v", err.Error()))
 	}
@@ -237,44 +310,32 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	res := &backend.CheckHealthResult{}
-	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
-
-	res.Status = backend.HealthStatusError
-	if err != nil {
-		res.Message = "Unable to load settings"
-		return res, nil
+	res := &backend.CheckHealthResult{
+		Status: backend.HealthStatusError,
 	}
-
-	if config.Secrets.SecretKey == "" {
+	if d.Config.Secrets.SecretKey == "" {
 		res.Message = "HMAC signing key is missing"
 		return res, nil
 	}
-
-	if config.Secrets.ClientId == "" {
+	if d.Config.Secrets.ClientId == "" {
 		res.Message = "Client ID is missing"
 		return res, nil
 	}
-
-	if config.ServerUrl == "" {
+	if d.Config.ServerUrl == "" {
 		res.Message = "Server URL is missing"
 		return res, nil
 	}
-
-	if config.BasePath == "" {
+	if d.Config.BasePath == "" {
 		res.Message = "BasePath is missing"
 		return res, nil
 	}
-
-	if config.AuthMethod == "" {
-		res.Message = "Auth method is missing"
+	if d.Config.AuthMethod == "" {
+		res.Message = "AuthMethod is missing"
 		return res, nil
 	}
-	path := config.BasePath + INDEX_NAME
+	path := d.Config.BasePath + INDEX_NAME
 	client := http.Client{}
-	getReq, err := signedGetRequest(
-		config.ServerUrl, path, config.Secrets.ClientId,
-		config.Secrets.SecretKey, config.AuthMethod, "\n")
+	getReq, err := d.request(path)
 	if err != nil {
 		res.Message = "Request failed:" + err.Error()
 		return res, nil
@@ -291,7 +352,7 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 	if resp.StatusCode != 200 {
-		res.Message = "Request failed:" + string(body)
+		res.Message = "Request failed:" + d.Config.Secrets.ClientId + "," + d.Config.Secrets.SecretKey
 		return res, nil
 	}
 	var things []models.ThingWithLocation

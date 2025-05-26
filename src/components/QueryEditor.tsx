@@ -1,26 +1,45 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack } from '@grafana/ui';
+import React from 'react';
+import { InlineField, Stack, Combobox, ComboboxOption } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, ObservationQuery } from '../types';
+import { MyDataSourceOptions, ObservationQuery, Thing } from '../types';
 
 type Props = QueryEditorProps<DataSource, ObservationQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange }: Props) {
-  const onDataStreamIdsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, thingId: event.target.value });
+
+export function QueryEditor({ query, datasource, onChange }: Props) {
+  const onComboboxChange = (option: ComboboxOption) => {
+    onChange({ ...query, thingId: option.value });
   };
+  // Get and parse available things to collect data streams from.
+  // Each query will have a single thing, but can request multiple
+  // data streams within a time range.
+  const options = () => datasource.getResource("sites").then(
+    (things: Thing[]) => {
+      return things.map((thing) => {
+        return {
+          label: thing.name,
+          value: thing.id
+        } as ComboboxOption
+      })
+    }, 
+    (err) => {
+      console.error({err})
+      return [] as ComboboxOption[];
+    })
   return (
-    <Stack gap={0}>
-      <InlineField label="Thing ID">
-        <Input
-          id="query-editor-data-stream-ids"
-          onChange={onDataStreamIdsChange}
-          value={query.thingId}
-          placeholder='...'
-          required
-        />
-      </InlineField>
-    </Stack>
+    <div>
+      <Stack gap={0}>
+        <InlineField label="Thing">
+          <Combobox 
+            id="query-editor-thing-id"
+            options={options}
+            onChange={onComboboxChange}
+            loading={true}
+          >
+          </Combobox>
+        </InlineField>
+      </Stack>
+    </div>
   );
 }
