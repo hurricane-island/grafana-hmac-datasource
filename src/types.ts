@@ -2,11 +2,11 @@ import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
 export interface ObservationQuery extends DataQuery {
-  datastreamIds: string;
+  thingId: string;
 }
 
 export const DEFAULT_QUERY: Partial<ObservationQuery> = {
-  datastreamIds: "",
+  thingId: "",
 };
 
 /**

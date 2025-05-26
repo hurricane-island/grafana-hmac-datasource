@@ -28,8 +28,8 @@ type DataStream struct {
 }
 
 type Observation struct {
-	Value          float32 `json:"value"`
-	PhenomenonTime int     `json:"phenomenonTime"`
+	Value          float64 `json:"value"`
+	PhenomenonTime int64  `json:"phenomenonTime"`
 }
 
 type PluginSettings struct {

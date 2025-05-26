@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"math"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -130,7 +131,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 }
 
 type QueryModel struct {
-	DataStreamIds string `json:"dataStreamIds"`
+	ThingId string `json:"thingId"`
 }
 
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
@@ -147,18 +148,49 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-	path := config.BasePath + QUERY_PATH
+	datastreamsUrl := config.BasePath + "/site/" + qm.ThingId + "/datastreams"
+	req, err := signedGetRequest(config.ServerUrl, datastreamsUrl, clientId, secretKey, config.AuthMethod, "\n")
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
+	}
 	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("body: %v", err.Error()))
+	}
+	if resp.StatusCode != 200 {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", string(body)))
+	}
+	var datastreams []models.DataStream
+	err = json.Unmarshal(body, &datastreams)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshal: %v",err.Error()))
+	}
+	var datastreamIds []string
+	var lookup = make(map[string]string)
+	for _, ds := range datastreams {
+		datastreamIds = append(datastreamIds, ds.Id)
+		lookup[ds.Id] = ds.Name
+	}
+	from := query.TimeRange.From.Format(ISO_COMPATIBILITY)
+	until := query.TimeRange.To.Format(ISO_COMPATIBILITY)
+	path := config.BasePath + QUERY_PATH + "?from=" + from + "&until=" + until + "&datastreamIds=" + strings.Join(datastreamIds, ",")
+	
 	getReq, err := signedGetRequest(config.ServerUrl, path, clientId, secretKey, config.AuthMethod, "\n")
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("signed request: %v", err.Error()))
 	}
-	resp, err := client.Do(getReq)
+	resp, err = client.Do(getReq)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request failed: %v", err.Error()))
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("reading body: %v", err.Error()))
 	}
@@ -170,26 +202,38 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("partial unmarshaling failed: %v", err.Error()))
 	}
-	for _, v := range partial {
+	for k, v := range partial {
 		var obs []models.Observation
 		err = json.Unmarshal(v, &obs)
 		if err != nil {
-			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshaling observation failed: %v", err.Error()))
+			continue
+			// return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshaling observation failed: %v", name))
 		}
-		time := make([]int, len(obs))
-		value := make([]float32, len(obs))
+		t := make([]time.Time, len(obs))
+		value := make([]float64, len(obs))
+		count := 0
 		for i, observation := range obs {
-			time[i] = observation.PhenomenonTime
+			if math.IsNaN(observation.Value) {
+				// Skip NaN values
+				continue
+			}
+			t[i] = time.Unix(0, observation.PhenomenonTime * int64(time.Millisecond))
 			value[i] = observation.Value
+			count += 1
 		}
 		// https://grafana.com/developers/plugin-tools/introduction/data-frames
-		frame := data.NewFrame("response")
+		if count == 0 {
+			// If no valid observations, skip this datastream
+			continue
+		}
+		name := lookup[k]
+		frame := data.NewFrame(name)
 		frame.Fields = append(frame.Fields,
-			data.NewField("phenomenonTime", nil, time),
+			data.NewField("phenomenonTime", nil, t),
 			data.NewField("value", nil, value),
 		)
 		response.Frames = append(response.Frames, frame)
-	}	
+	}
 	return response
 }
 

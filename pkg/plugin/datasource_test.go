@@ -165,7 +165,7 @@ func TestQueryObservations(t *testing.T) {
 		observations[k] = obs
 	}
 	if true {
-		t.Fatal("Request succeeded with:", len(observations))
+		t.Fatal("Request succeeded with:", observations)
 	}
 }
 

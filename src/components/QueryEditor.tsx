@@ -8,16 +8,16 @@ type Props = QueryEditorProps<DataSource, ObservationQuery, MyDataSourceOptions>
 
 export function QueryEditor({ query, onChange }: Props) {
   const onDataStreamIdsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, datastreamIds: event.target.value });
+    onChange({ ...query, thingId: event.target.value });
   };
   return (
     <Stack gap={0}>
-      <InlineField label="Data Stream IDs">
+      <InlineField label="Thing ID">
         <Input
           id="query-editor-data-stream-ids"
           onChange={onDataStreamIdsChange}
-          value={query.datastreamIds}
-          placeholder='one,two'
+          value={query.thingId}
+          placeholder='...'
           required
         />
       </InlineField>
