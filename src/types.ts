@@ -3,8 +3,23 @@ import { DataQuery } from '@grafana/schema';
 
 export interface ObservationQuery extends DataQuery {
   thingId: string;
+  dataStreamIds?: string;
 }
 
+
+export type ThingWithDataStreams = {
+  thing: Thing
+  dataStreams: DataStream[]
+}
+export type DataStream = {
+  id: string
+  name: string
+  description: string
+  unitOfMeasurement: {
+    name: string
+    symbol: string
+  }
+}
 export type Thing = {
   id: string
   name: string

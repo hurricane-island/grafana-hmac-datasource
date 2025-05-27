@@ -20,9 +20,22 @@ import (
 	"github.com/hurricane-island/grafana-hmac-datasource/pkg/models"
 )
 
+// Equivalent to JavaScript's Date.toISOString() format.
 const ISO_COMPATIBILITY = "2006-01-02T15:04:05.000Z"
-const INDEX_NAME = "/sites"
+// Base path for indexing available resources.
+const INDEX_NAME = "sites"
+// Path to query for time series data
 const QUERY_PATH = "/observations"
+// Name of time query in service API.
+const QUERY_START = "from"
+// Name of time query in service API.
+const QUERY_END = "until"
+// Name of query parameter for time series tags.
+const QUERY_TAGS = "datastreamIds"
+// Root path for querying data streams.
+const QUERY_ROOT = "site"
+// Second path element for querying data streams.
+const QUERY_COLLECTION = "datastreams"
 
 // Make sure Datasource implements required interfaces. This is important to do
 // since otherwise we will only get a not implemented error response from plugin in
@@ -98,6 +111,7 @@ func NewDatasource(_ context.Context, instanceSettings backend.DataSourceInstanc
 	}
 	return &Datasource{
 		Config: config,
+		Client: &http.Client{},
 	}, nil
 }
 
@@ -105,6 +119,7 @@ func NewDatasource(_ context.Context, instanceSettings backend.DataSourceInstanc
 // its health and has streaming skills.
 type Datasource struct{
 	Config *models.PluginSettings
+	Client *http.Client
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -140,22 +155,20 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 func (d *Datasource) CallResource(
 	// Unused
 	_ context.Context,
-	// Contains API path to query, e.g. /sites
-	req *backend.CallResourceRequest, 
+	// Contains API path to query
+	req *backend.CallResourceRequest,
+	// Response handler
 	sender backend.CallResourceResponseSender,
 ) error {
 	path := d.Config.BasePath + "/" + req.Path
-	client := http.Client{}
-	getReq, err := signedGetRequest(
-		d.Config.ServerUrl, path, d.Config.Secrets.ClientId,
-		d.Config.Secrets.SecretKey, d.Config.AuthMethod, "\n")
+	getReq, err := d.request(path)
 	if err != nil {
 		return sender.Send(&backend.CallResourceResponse{
-			Status: http.StatusBadRequest,
+			Status: http.StatusInternalServerError,
 			Body: []byte(err.Error()),
 		})
 	}
-	resp, err := client.Do(getReq)
+	resp, err := d.Client.Do(getReq)
 	if err != nil {
 		return sender.Send(&backend.CallResourceResponse{
 			Status: http.StatusInternalServerError,
@@ -184,7 +197,53 @@ func (d *Datasource) CallResource(
 			Body: []byte(err.Error()),
 		})
 	}
-	result, err := json.Marshal(things)
+	resource := make([]models.ThingWithDataStreams, 0, len(things))
+	for _, thing := range things {
+		parts := []string{d.Config.BasePath, QUERY_ROOT, thing.Id, QUERY_COLLECTION}
+		url := strings.Join(parts, "/")
+		getReq, err = d.request(url)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			})
+		}
+		resp, err = d.Client.Do(getReq)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			})
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			})
+		}
+		if resp.StatusCode != 200 {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body: []byte(body),
+			})
+		}
+		var dataStreams []models.DataStream
+		err = json.Unmarshal(body, &dataStreams)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			})
+		}
+		resource = append(resource, models.ThingWithDataStreams{
+			Thing:        thing,
+			DataStreams: dataStreams,
+		})
+	}
+	
+	result, err := json.Marshal(resource)
 	if err != nil {
 		return sender.Send(&backend.CallResourceResponse{
 			Status: http.StatusInternalServerError,
@@ -200,6 +259,7 @@ func (d *Datasource) CallResource(
 	})
 }
 
+// Selection data from the frontend query editor
 type QueryModel struct {
 	ThingId string `json:"thingId"`
 }
@@ -209,6 +269,7 @@ func (d *Datasource) request(path string) (*http.Request, error) {
 	return signedGetRequest(d.Config.ServerUrl, path, d.Config.Secrets.ClientId, d.Config.Secrets.SecretKey, d.Config.AuthMethod, "\n")
 }
 
+// Handler for a single frontend query.
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
 	var qm QueryModel
@@ -216,13 +277,13 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-	datastreamsUrl := d.Config.BasePath + "/site" + "/" + qm.ThingId + "/datastreams"
-	req, err := d.request(datastreamsUrl)
+	parts := []string{d.Config.BasePath, QUERY_ROOT, qm.ThingId, QUERY_COLLECTION}
+	url := strings.Join(parts, "/")
+	req, err := d.request(url)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
 	}
-	client := http.Client{}
-	resp, err := client.Do(req)
+	resp, err := d.Client.Do(req)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", err.Error()))
 	}
@@ -234,26 +295,29 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	if resp.StatusCode != 200 {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request: %v", string(body)))
 	}
-	var datastreams []models.DataStream
-	err = json.Unmarshal(body, &datastreams)
+	var dataStreams []models.DataStream
+	err = json.Unmarshal(body, &dataStreams)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshal: %v", err.Error()))
 	}
-	var datastreamIds []string
+	var tags []string
 	var lookup = make(map[string]string)
-	for _, ds := range datastreams {
-		datastreamIds = append(datastreamIds, ds.Id)
+	for _, ds := range dataStreams {
+		tags = append(tags, ds.Id)
 		lookup[ds.Id] = ds.Name
 	}
 	from := query.TimeRange.From.Format(ISO_COMPATIBILITY)
 	until := query.TimeRange.To.Format(ISO_COMPATIBILITY)
-	path := d.Config.BasePath + QUERY_PATH + "?from=" + from + "&until=" + until + "&datastreamIds=" + strings.Join(datastreamIds, ",")
+	path := d.Config.BasePath + QUERY_PATH + 
+		"?" + QUERY_START + "=" + from + 
+		"&" + QUERY_END + "=" + until + 
+		"&" + QUERY_TAGS + "=" + strings.Join(tags, ",")
 
 	getReq, err := d.request(path)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("signed request: %v", err.Error()))
 	}
-	resp, err = client.Do(getReq)
+	resp, err = d.Client.Do(getReq)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("request failed: %v", err.Error()))
 	}
@@ -275,23 +339,19 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 		err = json.Unmarshal(v, &obs)
 		if err != nil {
 			continue
-			// return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unmarshaling observation failed: %v", name))
 		}
 		t := make([]time.Time, len(obs))
 		value := make([]float64, len(obs))
 		count := 0
 		for i, observation := range obs {
 			if math.IsNaN(observation.Value) {
-				// Skip NaN values
 				continue
 			}
 			t[i] = time.Unix(0, observation.PhenomenonTime*int64(time.Millisecond))
 			value[i] = observation.Value
 			count += 1
 		}
-		// https://grafana.com/developers/plugin-tools/introduction/data-frames
 		if count == 0 {
-			// If no valid observations, skip this datastream
 			continue
 		}
 		name := lookup[k]
@@ -333,14 +393,13 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		res.Message = "AuthMethod is missing"
 		return res, nil
 	}
-	path := d.Config.BasePath + INDEX_NAME
-	client := http.Client{}
+	path := strings.Join([]string{d.Config.BasePath, INDEX_NAME}, "/")
 	getReq, err := d.request(path)
 	if err != nil {
 		res.Message = "Request failed:" + err.Error()
 		return res, nil
 	}
-	resp, err := client.Do(getReq)
+	resp, err := d.Client.Do(getReq)
 	if err != nil {
 		res.Message = "Request failed:" + err.Error()
 		return res, nil
@@ -352,7 +411,7 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 	if resp.StatusCode != 200 {
-		res.Message = "Request failed:" + d.Config.Secrets.ClientId + "," + d.Config.Secrets.SecretKey
+		res.Message = "Request failed:" + string(body)
 		return res, nil
 	}
 	var things []models.ThingWithLocation

@@ -7,7 +7,16 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
-// SensorThings API Thing, with nested Location
+// Container data type returned to the frontend for populating
+// query editor dropdowns and other UI elements.
+type ThingWithDataStreams struct {
+	Thing ThingWithLocation `json:"thing"`
+	DataStreams []DataStream `json:"dataStreams"`
+}
+
+// SensorThings API Thing, with nested Location.
+// Schema is determine by the API that the plugin
+// integrates with, and propagates to the frontend.
 type ThingWithLocation struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
@@ -18,7 +27,9 @@ type ThingWithLocation struct {
 	} `json:"location"`
 }
 
-// SensorThings API Datastream
+// SensorThings API Datastream.
+// Schema is determine by the API that the plugin
+// integrates with, and propagates to the frontend.
 type DataStream struct {
 	Id                string `json:"id"`
 	Name              string `json:"name"`
@@ -29,12 +40,16 @@ type DataStream struct {
 	}
 }
 
-// SensorThings API Observation
+// SensorThings API Observation.
+// Schema is determine by the API that the plugin
+// integrates with, and propagates to the frontend.
 type Observation struct {
 	Value          float64 `json:"value"`
 	PhenomenonTime int64   `json:"phenomenonTime"`
 }
 
+// Info set during plugin initialization, including
+// plaintext and secure settings.
 type PluginSettings struct {
 	ServerUrl  string                `json:"serverUrl"`
 	BasePath   string                `json:"basePath"`
@@ -42,11 +57,14 @@ type PluginSettings struct {
 	Secrets    *SecretPluginSettings `json:"-"`
 }
 
+// Secrets set in plugin configuration.
 type SecretPluginSettings struct {
 	SecretKey string `json:"secretKey"`
 	ClientId  string `json:"clientId"`
 }
 
+// Used in datasource initialization to load
+// the plugin settings from the datasource instance settings.
 func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
 	settings := PluginSettings{}
 	err := json.Unmarshal(source.JSONData, &settings)
@@ -57,6 +75,7 @@ func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSetti
 	return &settings, nil
 }
 
+// Convert unstructured source map to SecretPluginSettings.
 func loadSecretPluginSettings(source map[string]string) *SecretPluginSettings {
 	return &SecretPluginSettings{
 		SecretKey: source["secretKey"],

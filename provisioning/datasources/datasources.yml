@@ -13,5 +13,5 @@ datasources:
       authMethod: 'xCloud'
       serverUrl: 'https://cloud.xylem.com'
     secureJsonData:
-      secretKey: 'secret-key'
-      clientId: 'client-id'
+      secretKey: ''
+      clientId: ''
